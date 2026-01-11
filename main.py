@@ -1,92 +1,50 @@
-from http.client import responses
+from pyexpat.errors import messages
 
 from dotenv import load_dotenv
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
-
-from langchain.chat_models import init_chat_model
-
-
-
 
 load_dotenv()
+
+from langchain.agents import create_agent
+from langchain.tools import tool
+from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+from langchain_tavily import TavilySearch
+
+# from tavily import TavilyClient
+
+# tavily = TavilyClient()
+
+
+# @tool
+# def search_tool(query: str) -> str:
+#     """
+#     Tool Searches the internet for the given query and returns the results.
+#     Args:
+#         query: The search query.
+#     Returns:
+#         The search results.
+#     """
+#
+#     print("Searching for:", query)
+#     return tavily.search(query)
+
+
+llm = ChatOpenAI()
+tools = [TavilySearch()]
+agent = create_agent(model=llm, tools=tools)
 
 
 def main():
     print("Hello from langchain-projects!")
-
-    information = """
-    Elon Reeve Musk FRS (/ˈiːlɒn/ EE-lon; born June 28, 1971) is a businessman, known for his leadership of Tesla, SpaceX, X (formerly Twitter), and the Department of Government Efficiency (DOGE). Musk has been the wealthiest person in the world since 2021; as of May 2025, Forbes estimates his net worth to be US$424.7 billion.
-    Born to a wealthy family in Pretoria, South Africa, Musk emigrated in 1989 to Canada. He received bachelor's degrees from the University of Pennsylvania in 1997 before moving to California, United States, to pursue business ventures. In 1995, Musk co-founded the software company Zip2. Following its sale in 1999, he co-founded X.com, an online payment company that later merged to form PayPal, which was acquired by eBay in 2002. That year, Musk also became an American citizen.
-    In 2002, Musk founded the space technology company SpaceX, becoming its CEO and chief engineer; the company has since led innovations in reusable rockets and commercial spaceflight. Musk joined the automaker Tesla as an early investor in 2004 and became its CEO and product architect in 2008; it has since become a leader in electric vehicles. In 2015, he co-founded OpenAI to advance artificial intelligence (AI) research but later left; growing discontent with the organization's direction and their leadership in the AI boom in the 2020s led him to establish xAI. In 2022, he acquired the social network Twitter, implementing significant changes and rebranding it as X in 2023. His other businesses include the neurotechnology company Neuralink, which he co-founded in 2016, and the tunneling company the Boring Company, which he founded in 2017.
-    Musk was the largest donor in the 2024 U.S. presidential election, and is a supporter of global far-right figures, causes, and political parties. In early 2025, he served as senior advisor to United States president Donald Trump and as the de facto head of DOGE. After a public feud with Trump, Musk left the Trump administration and announced he was creating his own political party, the America Party.
-    Musk's political activities, views, and statements have made him a polarizing figure, especially following the COVID-19 pandemic. He has been criticized for making unscientific and misleading statements, including COVID-19 misinformation and promoting conspiracy theories, and affirming antisemitic, racist, and transphobic comments. His acquisition of Twitter was controversial due to a subsequent increase in hate speech and the spread of misinformation on the service. His role in the second Trump administration attracted public backlash, particularly in response to DOGE.
-    """
-
-    # this prompt becomes too complex for ollama models... why?
-    # summary_template = f"""
-    # given the {information} about  a person I want you to create:
-    # 1. a short summary about this person in 100 words.
-    # 2. twi interesting facts about them
-    # Provide the response in a json format with keys 'summary' and 'facts'.
-    # """
-
-    summary_template = """
-        given the information {information} about a person I want you to create:
-        1. A short summary
-        2. two interesting facts about them
-        """
-
-    extract_from_summary = """
-     given  the summary {summary} only from the previous response
-     list the major company names mentioned in the summary
-     list and sum the net worth values mentioned in the summary
-     """
-
-
-
-
-    # Create the prompt template
-    summary_prompt_template = PromptTemplate(
-        input_variables=["information"],
-        template=summary_template,
+    # result = agent.invoke({"messages": HumanMessage(content="What is weather in Tokyo?")})
+    result = agent.invoke(
+        {
+            "messages": HumanMessage(
+                content="search for 3 job postings for an ai engineer using langchain in the bay area on linkedin and list their details?"
+            )
+        }
     )
-
-    # extract_from_summary_tmplate = PromptTemplate(
-    #
-    #     input_variables=["summary"],
-    #     template=extract_from_summary,
-    # )
-    # *** option 1: try using ChatOpenAI directly
-    # Initialize the language model
-    #llm = ChatOpenAI(model="gpt-5", temperature=0)
-    print("Using Ollama model...")
-    llm = ChatOllama(model="gemma3:270m", temperature=0)
-
-    # Create the chain by combining the prompt template and the language model
-    chain = summary_prompt_template | llm #| extract_from_summary_tmplate| llm
-    #chain = summary_prompt_template.bind(llm=llm)
-
-    # Invoke the chain with the input information
-    response = chain.invoke(
-        input={"information": information}
-    )
-    print(response.content)
-
-    # *** option 2: try using init_chat_model
-
-    # chat_model = init_chat_model("gpt-5", temperature=0)
-    # chain = summary_prompt_template | chat_model
-    # response = chain.invoke(
-    #     input={"information": information}
-    # )
-    # print(response.content)
-
-
-
-
-
+    print("Agent result:", result)
 
 
 if __name__ == "__main__":
