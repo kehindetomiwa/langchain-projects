@@ -1,65 +1,52 @@
+from tempfile import template
+
 from dotenv import load_dotenv
+
+from prompt import REACT_PROMPT_WITH_FORMAT_INSTRUCTIONS
 
 load_dotenv()
 
-from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
+from langchain_classic.agents import AgentExecutor, create_react_agent
+from langchain_core.output_parsers.pydantic import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableLambda
+# from langchain.agents.react.agent import create_react_agent
 from langchain_openai import ChatOpenAI
 from langchain_tavily import TavilySearch
 
-from pydantic import BaseModel, Field
+from schema import AgentResponse
 
-# from langchain.tools import tool
-# from tavily import TavilyClient
-
-# tavily = TavilyClient()
-
-
-# @tool
-# def search_tool(query: str) -> str:
-#     """
-#     Tool Searches the internet for the given query and returns the results.
-#     Args:
-#         query: The search query.
-#     Returns:
-#         The search results.
-#     """
-#
-#     print("Searching for:", query)
-#     return tavily.search(query)
-
-
-class Source(BaseModel):
-    """Schema for a source used by the agent"""
-
-    url: str = Field(description="The URL of the source")
-
-
-class AgentResponse(BaseModel):
-    """Schema for the agent response withh answer and sources"""
-
-    answer: str = Field(description="The final answer from the query")
-    sources: list[Source] = Field(
-        default_factory=list, description="List of sources used to generate the answer"
-    )
-
-
-llm = ChatOpenAI()
 tools = [TavilySearch()]
-agent = create_agent(model=llm, tools=tools, response_format=AgentResponse)
+llm = ChatOpenAI(model="gpt-4o")
+
+
+output_parser = PydanticOutputParser(pydantic_object=AgentResponse)
+
+react_prompt_with_format_instructions = PromptTemplate(
+    template=REACT_PROMPT_WITH_FORMAT_INSTRUCTIONS,
+    input_variables=["input", "agent_scratchpad", "tool_names"],
+).partial(format_instructions=output_parser.get_format_instructions())
+
+agent = create_react_agent(
+    llm=llm,
+    tools=tools,
+    prompt=react_prompt_with_format_instructions,
+)
+
+
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+extract_output = RunnableLambda(lambda x: x["output"])
+parse_output = RunnableLambda(lambda x: output_parser.parse(x))
+chain = agent_executor | extract_output | parse_output
 
 
 def main():
-    print("Hello from langchain-projects!")
-    # result = agent.invoke({"messages": HumanMessage(content="What is weather in Tokyo?")})
-    result = agent.invoke(
-        {
-            "messages": HumanMessage(
-                content="search for 3 job postings for an ai engineer using langchain in the bay area on linkedin and list their details?"
-            )
+    result = chain.invoke(
+        input={
+            "input": "search for 3 job postings for an ai engineer using langchain in the bay area on linkedin and list their details",
         }
     )
-    print("Agent result:", result)
+    print(result)
 
 
 if __name__ == "__main__":
