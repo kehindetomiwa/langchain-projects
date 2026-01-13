@@ -1,13 +1,9 @@
-from gc import callbacks
 from typing import List, Union
 
 from dotenv import load_dotenv
-from langchain_classic.agents.format_scratchpad import format_log_to_str
-from langchain_classic.agents.output_parsers import \
-    ReActSingleInputOutputParser
 from langchain_core.agents import AgentAction, AgentFinish
-from langchain_core.prompts import PromptTemplate
-from langchain_core.tools import Tool, render_text_description, tool
+from langchain_core.messages import BaseMessage
+from langchain_core.tools import Tool, tool
 from langchain_openai import ChatOpenAI
 
 from callbacks import AgentCallbackHandler
@@ -30,72 +26,58 @@ def find_tool_by_name(tools: List[Tool], tool_name: str) -> Tool:
 
 
 def main():
-    print("Hello ReAct LangChain!")
+    print("Hello bind_tools LangChain!")
     tools = [get_text_length]
-
-    template = """
-        Answer the following questions as best you can. You have access to the following tools:
-
-        {tools}
-
-        Use the following format:
-
-        Question: the input question you must answer
-        Thought: you should always think about what to do
-        Action: the action to take, should be one of [{tool_names}]
-        Action Input: the input to the action
-        Observation: the result of the action
-        ... (this Thought/Action/Action Input/Observation can repeat N times)
-        Thought: I now know the final answer
-        Final Answer: the final answer to the original input question
-
-        Begin!
-
-        Question: {input}
-        Thought: {agent_scratchpad}
-    """
-
-    prompt = PromptTemplate.from_template(template=template).partial(
-        tools=render_text_description(tools),
-        tool_names=", ".join([t.name for t in tools]),
-    )
 
     llm = ChatOpenAI(
         temperature=0,
-        stop=["\nObservation:", "Observation"],
         callbacks=[AgentCallbackHandler()],
     )
+    
+    # Bind tools to the LLM
+    agent_model = llm.bind_tools(tools)
+    
     intermediate_step = []
-    agent = (
-        {
-            "input": lambda x: x["input"],
-            "agent_scratchpad": lambda x: format_log_to_str(x["agent_scratchpad"]),
-        }
-        | prompt
-        | llm
-        | ReActSingleInputOutputParser()
-    )
+    
+    # Initial message for the agent
+    system_message = "You are a helpful assistant. Use the tools available to answer questions accurately."
+    messages = [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": "What is the text length of 'Dog' in characters?"},
+    ]
+    
+    agent_step = None
 
-    agent_step = ""
-
-    while not isinstance(agent_step, AgentFinish):
-        agent_step: Union[AgentAction, AgentFinish] = agent.invoke(
-            {
-                "input": "What is the text length of 'Dog' in characters?",
-                "agent_scratchpad": intermediate_step,
-            }
-        )
-        if isinstance(agent_step, AgentAction):
-            tool_name = agent_step.tool
-            tool_to_use = find_tool_by_name(tools, tool_name)
-            tool_input = agent_step.tool_input
-
-            observation = tool_to_use.func(str(tool_input))
-            print(f"observation: {observation}")
-            intermediate_step.append((agent_step, str(observation)))
-
-    if isinstance(agent_step, AgentFinish):
-        print(agent_step.return_values)
+    while True:
+        # Get response from model with tools
+        response = agent_model.invoke(messages)
+        
+        # Check if there are tool calls
+        if response.tool_calls:
+            # Process each tool call
+            for tool_call in response.tool_calls:
+                tool_name = tool_call["name"]
+                tool_input = tool_call["args"]
+                tool_id = tool_call["id"]
+                
+                tool_to_use = find_tool_by_name(tools, tool_name)
+                observation = tool_to_use.func(**tool_input) if isinstance(tool_input, dict) else tool_to_use.func(tool_input)
+                
+                print(f"Tool: {tool_name}")
+                print(f"Input: {tool_input}")
+                print(f"Observation: {observation}")
+                
+                # Add assistant response and tool result to messages
+                messages.append({"role": "assistant", "content": response.content, "tool_calls": response.tool_calls})
+                messages.append({
+                    "role": "tool",
+                    "content": str(observation),
+                    "tool_call_id": tool_id,
+                })
+        else:
+            # No tool calls, this is the final response
+            print("Final Answer:", response.content)
+            break
 
 
 if __name__ == "__main__":
