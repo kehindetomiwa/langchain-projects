@@ -31,6 +31,8 @@ embeddings = OpenAIEmbeddings(
     chunk_size=50,
     retry_min_seconds=10,
 )
+
+
 vectorstore = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
 
 tavily_extract = TavilyExtract()
@@ -96,28 +98,28 @@ async def main():
 
     res = tavily_crawl.invoke(
         {
-            "url": "https://python.langchain.com/",
+            "url": "https://docs.langchain.com/",
             "max_depth": 5,
             "extract_depth": "advanced",
         }
     )
 
-    all_docs = [
-        Document(page_content=page["raw_content"], metadata={"source": page["url"]})
-        for page in res["results"]
-    ]
+    # all_docs = [
+    #     Document(page_content=page["raw_content"], metadata={"source": page["url"]})
+    #     for page in res["results"]
+    # ]
 
-    # all_docs = []
-    # for tavily_crawl_result_item in res["results"]:
-    #     log_info(
-    #         f"TavilyCrawl: Successfully crawled {tavily_crawl_result_item['url']} from documentation site"
-    #     )
-    #     all_docs.append(
-    #         Document(
-    #             page_content=tavily_crawl_result_item["raw_content"],
-    #             metadata={"source": tavily_crawl_result_item["url"]},
-    #         )
-    #     )
+    all_docs = []
+    for tavily_crawl_result_item in res["results"]:
+        log_info(
+            f"TavilyCrawl: Successfully crawled {tavily_crawl_result_item['url']} from documentation site"
+        )
+        all_docs.append(
+            Document(
+                page_content=tavily_crawl_result_item["raw_content"],
+                metadata={"source": tavily_crawl_result_item["url"]},
+            )
+        )
 
     log_header("DOCUMENT CHUNKING PHASE")
     log_info(

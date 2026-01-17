@@ -11,6 +11,7 @@ from langchain_chroma import Chroma
 # write a python code to get a path of chroma_db use PAthLIB, chroma_db is in parent directory
 from pathlib import Path
 
+
 db_name = str(Path(__file__).parent.parent / "chroma_db")
 
 print(f"Chroma DB Path: {db_name}")
@@ -25,11 +26,13 @@ vectorstore = Chroma(persist_directory=db_name, embedding_function=embeddings)
 #model = init_chat_model(model_name="gpt-4o", model_provider="openai", temperature=0)
 model = init_chat_model("gpt-5.2", model_provider="openai")
 
-@tool
+@tool(response_format="content_and_artifact")
 def retrieve_context(query: str) -> str:
     """Retrieve relevant documentation to help answer user queries about LangChain."""
     # Retrieve top 4 most similar documents
     retrieved_docs = vectorstore.as_retriever().invoke(query, k=4)
+    
+    print(f"\nRetrieved {len(retrieved_docs)} documents for query: {query}\n")
 
     # Serialize documents for the model
     serialized = "\n\n".join(
@@ -86,5 +89,5 @@ def run_llm(query: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    result = run_llm(query="what is langchain ?")
+    result = run_llm(query="explain LangSmith Deployment")
     print(result)
