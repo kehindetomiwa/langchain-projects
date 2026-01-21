@@ -1,63 +1,64 @@
-from dotenv import load_dotenv
+from typing import Literal
 
-load_dotenv()
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.graph import END, START, StateGraph, MessagesState
 
-from typing import TypedDict, Annotated
-from langchain_core.messages import BaseMessage, HumanMessage
-from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
+from chains import revisor, first_responder
+from tool_executor import execute_tools
 
-from chains import generate_chain, reflect_chain
-
+MAX_ITERATIONS = 2
 
 
-class MessageGraph(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+def draft_node(state: MessagesState):
+    """Draft the initial response."""
+    response = first_responder.invoke({"messages": state["messages"]})
+    return {"messages": [response]}
 
-REFLECT = "reflect"
-GENERATE = "generate"
 
-def generation_node(state: MessageGraph):
-    return {"messages": [generate_chain.invoke({"messages": state["messages"]})]}
+def revise_node(state: MessagesState):
+    """Revise the answer based on tool results."""
+    response = revisor.invoke({"messages": state["messages"]})
+    return {"messages": [response]}
 
-def reflection_node(state: MessageGraph):
-    res = reflect_chain.invoke({"messages": state["messages"]})
-    return {"messages": [HumanMessage(content=res.content)]}
 
-builder = StateGraph(state_schema=MessageGraph)
-builder.add_node(GENERATE, generation_node)
-builder.add_node(REFLECT, reflection_node)
-builder.set_entry_point(GENERATE)
-
-def should_continue(state: MessageGraph):
-    if len(state["messages"]) >= 6:
+def event_loop(state: MessagesState) -> Literal["execute_tools", END]:
+    """Determine whether to continue or end based on iteration count."""
+    count_tool_visits = sum(isinstance(item, ToolMessage) for item in state["messages"])
+    num_iterations = count_tool_visits
+    if num_iterations > MAX_ITERATIONS:
         return END
-    return REFLECT
+    return "execute_tools"
 
-builder.add_conditional_edges(GENERATE, should_continue, {END: END, REFLECT: REFLECT})
-builder.add_edge(REFLECT, GENERATE)
 
+builder = StateGraph(MessagesState)
+builder.add_node("draft", draft_node)
+builder.add_node("execute_tools", execute_tools)
+builder.add_node("revise", revise_node)
+builder.add_edge(START, "draft")
+builder.add_edge("draft", "execute_tools")
+builder.add_edge("execute_tools", "revise")
+builder.add_conditional_edges("revise", event_loop, ["execute_tools", END])
 graph = builder.compile()
-print(graph.get_graph().draw_mermaid() )
+
+print(graph.get_graph().draw_mermaid())
+
+
+res = graph.invoke(
+    {
+        "messages": [
+            {
+                "role": "user",
+                "content": "Write about AI-Powered SOC / autonomous soc problem domain, list startups that do that and raised capital.",
+            }
+        ]
+    }
+)
+# Extract the final answer from the last message with tool calls
+last_message = res["messages"][-1]
+if isinstance(last_message, AIMessage) and last_message.tool_calls:
+    print(last_message.tool_calls[0]["args"]["answer"])
+print(res)
 
 
 if __name__ == "__main__":
     print("Hello reflection LangGraph")
-    inputs = {
-        "messages": [
-            HumanMessage(
-                content="""Make this tweet better:"
-                                    @LangChainAI
-            — newly Tool Calling feature is seriously underrated.
-
-            After a long wait, it's  here- making the implementation of agents across different models with function calling - super easy.
-
-            Made a video covering their newest blog post
-
-                                  """
-            )
-        ]
-    }
-    response = graph.invoke(inputs)
-    print(response)
-    
