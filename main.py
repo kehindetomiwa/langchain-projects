@@ -1,11 +1,9 @@
-from typing import Literal
+from dotenv import load_dotenv
 
-from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.graph import END, START, StateGraph, MessagesState
+load_dotenv()
 
-from chains import revisor, first_responder
-from tool_executor import execute_tools
-
+from graph.graph import app
 
 if __name__ == "__main__":
-    print("Hello reflection LangGraph")
+    print("Hello Advanced RAG")
+    print(app.invoke(input={"question": "agent memory?"}))

@@ -19,8 +19,5 @@ parser = JsonOutputToolsParser(return_id=True)
 parser_pydantic = PydanticToolsParser(tools=[AnswerQuestion])
 
 
-
-
-
 if __name__ == "__main__":
     print("chains loaded")
